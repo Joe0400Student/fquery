@@ -8,7 +8,7 @@ code and to force functional design paradigms when dealing with datasets.
 The reason behind this choice was to improve efficiency. 
 
 ## Planned Features:
-- builtins written as much as possible in the language itself
+- builtins written as much as possible is in the fquery itself
 - Lazily evaluated tables
 - streams
 - Piping
