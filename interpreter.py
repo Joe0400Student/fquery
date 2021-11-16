@@ -1,4 +1,7 @@
 
+    
+VERSION = "0.0.1-dev"
+YEAR = "2021"
 
 from functools import reduce
 
@@ -130,10 +133,11 @@ class QuitException(Exception):
     pass
 
 class List(Value):
-    def __init__(self, value=[], environment: dict):
-        self.value = value
+    def __init__(self, value=[], environment={}):
+        self.value = None if len(value) == 0 else value[0]
         self.environment = environment
-    def push
+
+
 
 def execute(program, environment: dict) -> Value:
     while(not isinstance(program, Value)):
@@ -147,7 +151,7 @@ def execute(program, environment: dict) -> Value:
 
 
 def main() -> None:
-    print("Starting the fquery interpreter")
+    print(f"FQlang[ver:{VERSION}][{YEAR}] -- Copyright Joseph Scannell - Python 3.10")
     environment = {"collatz":
         If_Else(
             Operator(
