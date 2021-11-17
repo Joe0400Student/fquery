@@ -1,9 +1,11 @@
 
     
-VERSION = "0.0.1-dev"
+VERSION = "0.0.2-dev"
 YEAR = "2021"
 
 from functools import reduce
+
+
 
 class UnresolvableVariable(Exception):
     pass
@@ -132,12 +134,97 @@ class If_Else:
 class QuitException(Exception):
     pass
 
-class List(Value):
-    def __init__(self, value=[], environment={}):
-        self.value = None if len(value) == 0 else value[0]
+from zipfile import ZipFile
+from io import TextIOWrapper as io_wrap
+
+class FSLoader:
+    
+    def __init__(self,file_name,environment={}):
+        descriptor=Value("a",{})
+        self.file_name = file_name
+        self.descriptor = descriptor
+        self.environment=environment
+
+    def step(self, local_environment={}):
+
+        temp_env = local_environment
+        for var in self.environment:
+            temp_env[var] = self.environment[var]
+        if(not isinstance(self.file_name, Value)):
+            return FSLoader(self.file_name.step(temp_env),self.descriptor,{})
+        if(not isinstance(self.descriptor, Value)):
+            return FSLoader(self.file_name, self.descriptor.step(temp_env),{})
+        self.file_name = self.file_name.value
+        self.descriptor = self.descriptor.value
+        self.file = ZipFile(self.file_name,self.descriptor)
+        self.manifest = io_wrap(self.file.open("manifest.txt"))
+        table_names = map(lambda a: a[:-1], self.manifest.readlines())
+        self.tables = {line:io_wrap(self.file.open(f"{line}.table")) for line in table_names}
+        return Loaded_Table(self.file, self.manifest, self.tables,self.environment)
+    def update_all_variables(self, kwargs):
+        for k in kwargs:
+            self.environ[k] = kwargs[k]
+        self.file_name.update_all_variables(kwargs)
+        self.descriptor.update_all_variables(kwargs)
+        
+class Loaded_Table:
+    def __init__(self,file, manifest, tables, environment={}):
+        self.file = file
+        self.manifest = manifest
+        self.tables = tables
         self.environment = environment
+    
+    def step(self, local_environment={}):
+        raise Exception("Loaded table trying to be propogated back down the call trace, <you shouldnt be seeing this, make an issue on https://github.com/Joe0400Student/fquery>")
+    
+    def update_all_variables(self,kwargs):
+        for k in kwargs:
+            self.environment[k] = kwargs[k]
 
 
+class UnwrapTable:
+    
+    def __init__(self, file_loader, table_name,environment={}):
+        self.file_loader = file_loader
+        self.table_name = table_name
+        self.environment = environment
+    
+    def step(self, local_environment={}):
+        temp_env = local_environment
+        for var in self.environment:
+            temp_env[var] = self.environment[var]
+        if(not isinstance(self.file_loader, Loaded_Table)):
+            return UnwrapTable(self.file_loader.step(temp_env),self.table_name,self.environment)
+        if(not isinstance(self.table_name, Value)):
+            return UnwrapTable(self.file_loader,self.table_name.step(temp_env),self.environment)
+        return Value(self.file_loader.tables[self.table_name.value],self.environment)
+
+    def update_all_variables(self,kwargs):
+        for k in kwargs:
+            self.environment[k] = kwargs[k]
+        self.file_loader.update_all_variables(kwargs)
+        self.table_name.update_all_variables(kwargs)
+
+
+class Print:
+    def __init__(self,expression,environment={}):
+        self.expression = expression
+        self.environment = environment
+    def step(self, local_environment={}):
+        temp_env = local_environment
+        for var in self.environment:
+            temp_env[var] = self.environment[var]
+        if(not isinstance(self.expression, Value)):
+            return Print(self.expression.step(temp_env),self.environment)
+        print(self.expression.value)
+        return Value(None,self.environment)
+    def update_all_variables(self,kwargs):
+        for k in kwargs:
+            self.environment[k] = kwargs[k]
+        self.expression.update_all_variables(kwargs)
+
+    
+    
 
 def execute(program, environment: dict) -> Value:
     while(not isinstance(program, Value)):
@@ -151,7 +238,7 @@ def execute(program, environment: dict) -> Value:
 
 
 def main() -> None:
-    print(f"FQlang[ver:{VERSION}][{YEAR}] -- Copyright Joseph Scannell - Python 3.10")
+    print(f"fang[ver:{VERSION}][{YEAR}] -- Copyright Joseph Scannell - Python 3.10")
     environment = {"collatz":
         If_Else(
             Operator(
@@ -198,9 +285,10 @@ def main() -> None:
             ),
             Variable('A',{}),
             {}
-        ),
-        'A':Value(69,{})}
-    print(execute(Variable("collatz",{}),environment).value)
+        )}
+    
+    execute(Print(Apply("A",Value(69,{}),Variable("collatz",{}),{}),{}),environment)
+    print(execute(UnwrapTable(FSLoader(Value("./Loaders/table.ftab",{})),Value("table1",{}),{}),environment).value)
     while True:
         selected_text = input(">> ")
         
