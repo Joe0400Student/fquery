@@ -1,10 +1,11 @@
 
     
-VERSION = "0.0.4-dev"
+VERSION = "0.0.5-dev"
 YEAR = "2021"
 
 from functools import reduce
-
+from zipfile import ZipFile
+from io import TextIOWrapper as io_wrap
 
 
 class UnresolvableVariable(Exception):
@@ -149,8 +150,6 @@ class If_Else:
 class QuitException(Exception):
     pass
 
-from zipfile import ZipFile
-from io import TextIOWrapper as io_wrap
 
 class Chain:
     def __init__(self, name: str, assigned, program, environment: dict):
@@ -303,7 +302,45 @@ class Get:
     def apply_all_dts(self,f):
         self.input_response = self.input_response.apply_all_dts(f)
         return self
-     
+
+class Not(Operator):
+    def __init__(self,arg1,env={}):
+        super().__init__(lambda a,b: not a, arg1, arg1, env)
+
+class And(Operator):
+    def __init__(self,arg1,arg2,env={}):
+        super().__init__(lambda a,b: a and b, arg1, arg2, env)
+
+class Or(Operator):
+    def __init__(self,arg1,arg2,env={}):
+        super().__init__(lambda a,b: a or b, arg1, arg2, env)
+
+class Negate(Operator):
+    def __init__(self,arg1,env={}):
+        super().__init__(lambda a,b: -a, arg1, arg1, env)
+
+class Equal(Operator):
+    def __init__(self, arg1, arg2, env={}):
+        super().__init__(lambda a, b: a == b, arg1, arg2, env)
+
+class Less(Operator):
+    def __init__(self, arg1, arg2, env={}):
+        super().__init__(lambda a, b: a < b, arg1, arg2, env)
+
+class Add(Operator):
+    def __init__(self, arg1, arg2, env={}):
+        super().__init__(lambda a,b: a+b, arg1, arg2, env)
+
+class Mult(Operator):
+    def __init__(self, arg1, arg2, env={}):
+        super().__init__(lambda a,b: a*b, arg1, arg2, env)
+
+class Invert(Operator):
+    def __init__(self, arg1, env={}):
+        super().__init__(lambda a,b: 1/a, arg1, arg2, env)
+
+
+    
 
 def execute(program, environment: dict) -> Value:
     while(not isinstance(program, Value)):
@@ -368,7 +405,8 @@ def main() -> None:
     execute(Print(Get(Value("please input something here: ",{})),{}),environment)
     execute(Print(Apply("A",Value(69,{}),Variable("collatz",{}),{}),{}),environment)
     execute(Print(Apply("B",Value(20,{}),Chain("C",Operator(lambda a,b: a*b,Variable("B",{}),Variable("B",{}),{}),Operator(lambda a,b: a+b,Variable("C",{}),Value(2,{}),{}),{}),{}),{}),environment)
-    print(execute(UnwrapTable(FSLoader(Value("./Loaders/table.ftab",{})),Value("table1",{}),{}),environment).value)
+    execute(Print(Add(Value(69,{}),Value(42000,{}),{}),{}),environment)
+    #print(execute(UnwrapTable(FSLoader(Value("./Loaders/table.ftab",{})),Value("table1",{}),{}),environment).value)
     while True:
         selected_text = input(">> ")
         
