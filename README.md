@@ -28,13 +28,13 @@ tables, functions, and piping.
   - [x] Variables
   - [x] Lambdas
   - [x] Output
+  - [x] Input
   - [x] Recursion
   - [x] Piping
   - [x] Database Loading
   - [ ] Database Updating
   - [ ] Database Deletion
   - [ ] Database Creation
-  - [ ] Input
   - [ ] Iterator base type
   - [ ] List base type
   - [ ] Named Tuple base type

@@ -1,6 +1,6 @@
 
     
-VERSION = "0.0.3-dev"
+VERSION = "0.0.4-dev"
 YEAR = "2021"
 
 from functools import reduce
@@ -284,7 +284,26 @@ class Print:
         self.expression = self.expression.apply_all_dts(f)
         return self
     
-    
+class Get:
+    def __init__(self,Input_Response=Value(">:",{}),force_type=lambda a:a,environment={}):
+        self.force_type = force_type
+        self.environment = environment
+        self.input_response = Input_Response
+    def step(self,local_environment={}):
+        temp_env = local_environment
+        for var in self.environment:
+            temp_env[var] = self.environment[var]
+        if(not isinstance(self.input_response,Value)):
+            return Get(self.input_response.step(temp_env),self.force_type,self.environment)
+        return Value(self.force_type(input(self.input_response.value)),self.environment)
+    def update_all_variables(self,kwargs):
+        for k in kwargs:
+            self.environment[k] = kwargs[k]
+        self.input_response.update_all_variables(kwargs)
+    def apply_all_dts(self,f):
+        self.input_response = self.input_response.apply_all_dts(f)
+        return self
+     
 
 def execute(program, environment: dict) -> Value:
     while(not isinstance(program, Value)):
@@ -346,7 +365,7 @@ def main() -> None:
             Variable('A',{}),
             {}
         )}
-    
+    execute(Print(Get(Value("please input something here: ",{})),{}),environment)
     execute(Print(Apply("A",Value(69,{}),Variable("collatz",{}),{}),{}),environment)
     execute(Print(Apply("B",Value(20,{}),Chain("C",Operator(lambda a,b: a*b,Variable("B",{}),Variable("B",{}),{}),Operator(lambda a,b: a+b,Variable("C",{}),Value(2,{}),{}),{}),{}),{}),environment)
     print(execute(UnwrapTable(FSLoader(Value("./Loaders/table.ftab",{})),Value("table1",{}),{}),environment).value)
