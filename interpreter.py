@@ -1,6 +1,6 @@
 
     
-VERSION = "0.0.2-dev"
+VERSION = "0.0.3-dev"
 YEAR = "2021"
 
 from functools import reduce
