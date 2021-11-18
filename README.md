@@ -23,6 +23,39 @@ tables, functions, and piping.
 - self-optimzing streams
 - events (requests) for exposing query results
 
+## Planned Timeline
+- [ ] exec working
+  - [x] Variables
+  - [x] Lambdas
+  - [x] Output
+  - [x] Recursion
+  - [x] Piping
+  - [x] Database Loading
+  - [ ] Database Updating
+  - [ ] Database Deletion
+  - [ ] Database Creation
+  - [ ] Input
+  - [ ] Iterator base type
+  - [ ] List base type
+  - [ ] Named Tuple base type
+  - [ ] Maps
+  - [ ] Filter
+  - [ ] Reduce
+  - [ ] Namespaces
+  - [ ] Imports
+  - [ ] Events
+  - [ ] Exceptions
+  - [ ] Optimizations
+- [ ] Make a Minimum Viable Parser.
+  - [ ] Token generation
+  - [ ] Pre-calculating results
+  - [ ] Error Reporting
+- [ ] Additional Features.
+  - [ ] Adding Table Visualization
+  - [ ] Exporting to CSV's
+  - [ ] Storing lambdas in `.ftab`'s
+  
+
 ## Language spec:
 
 The language is designed to be simple to read, and write. As such,
