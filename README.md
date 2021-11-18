@@ -31,13 +31,13 @@ tables, functions, and piping.
   - [x] Input
   - [x] Recursion
   - [x] Piping
+  - [x] Named Tuple base type
   - [x] Database Loading
   - [ ] Database Updating
   - [ ] Database Deletion
   - [ ] Database Creation
   - [ ] Iterator base type
   - [ ] List base type
-  - [ ] Named Tuple base type
   - [ ] Maps
   - [ ] Filter
   - [ ] Reduce

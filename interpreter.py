@@ -1,6 +1,6 @@
 
     
-VERSION = "0.0.5-dev"
+VERSION = "0.1.0-dev"
 YEAR = "2021"
 
 from functools import reduce
@@ -11,13 +11,38 @@ from io import TextIOWrapper as io_wrap
 class UnresolvableVariable(Exception):
     pass
 
+
+
 class Value:
     
-    def __init__(self, value, environ: dict):
+    """Value Object
+    This type stores the evaluation of any data
+    
+    Attributes:
+        __init__: Constructor
+        step:     Small-step executive function
+        pr:       Human-Readable format string-builder
+        value:    Contained value of the type
+        
+    """
+    def __init__(self, value, environ={}):
+        """Creates a Value Object
+        Parameter:
+            value   -> any:  The stored evaluation
+            environ -> dict: 
+        
+        """
         self.value, self.environ = value, environ
     
     def step(self,local_environment: dict):
-        #print("step in value")
+        """ Iteratively small-step execution
+        
+        Parameter:
+            local_environment -> dict: local updates to the stored environment
+        
+        Returns:
+            Value-Object
+        """
         return self
     def pr(self):
         return f"{self.value}"
@@ -339,6 +364,61 @@ class Invert(Operator):
     def __init__(self, arg1, env={}):
         super().__init__(lambda a,b: 1/a, arg1, arg2, env)
 
+class NamedTuple(Value):
+    
+    def __init__(self,data,env={}):
+        
+        if(isinstance(data,list)):
+            super().__init__({name:None for name in data},env)
+        else:
+            super().__init__(data,env)
+    
+    def step(self,local_environment={}):
+        temp_env = local_environment
+        for var in self.environ:
+            temp_env[var] = self.environment[var]
+        for vals in self.value:
+            if(not isinstance(self.value[vals],Value)):
+                data_cpy = self.value
+                data_cpy[vals] = data_cpy[vals].step(temp_env)
+                return NamedTuple(data_cpy,self.environ)
+        return EvaluatedTuple(self.value,self.environ)
+    
+    def update_all_variables(self,kwargs):
+        for k in kwargs:
+            self.environment[k] = kwargs[k]
+        for keys in self.value:
+            self.value[keys].update_all_variables(kwargs)
+    def apply_all_dts(self,f):
+        for keys in self.value:
+            self.value[keys] = self.value[keys].apply_all_dts(f)
+        
+
+class EvaluatedTuple(NamedTuple):
+    
+    def __init__(self,data,env={}):
+        print("constructing")
+        super().__init__(data,env)
+    
+    def step(self,local_environment={}):
+        raise Exception(" YOU SHOULD NOT BE ABLE TO SEE THIS! ")
+    
+class GetTupleData:
+    def __init__(self,tup,attribute_name,environment={}):
+        self.tup = tup
+        self.attribute_name = attribute_name
+        self.environment = environment
+    def step(self,local_environment={}):
+        temp_env = local_environment
+        for var in self.environment:
+            temp_env[var] = self.environment[var]
+        if(not isinstance(self.tup,EvaluatedTuple)):
+            return GetTupleData(self.tup.step(temp_env),self.attribute_name,self.environment)
+        if(not isinstance(self.attribute_name,Value)):
+            return GetTupleData(self.tup,self.attribute_name.step(temp_env),self.environment)
+        if(self.attribute_name.value not in self.tup.value):
+            raise Exception(f"Member Name {self.attribute_name.value} not in tuple!")
+        return self.tup.value[self.attribute_name.value]
 
     
 
@@ -401,11 +481,14 @@ def main() -> None:
             ),
             Variable('A',{}),
             {}
-        )}
+        ),
+
+        }
     execute(Print(Get(Value("please input something here: ",{})),{}),environment)
     execute(Print(Apply("A",Value(69,{}),Variable("collatz",{}),{}),{}),environment)
     execute(Print(Apply("B",Value(20,{}),Chain("C",Operator(lambda a,b: a*b,Variable("B",{}),Variable("B",{}),{}),Operator(lambda a,b: a+b,Variable("C",{}),Value(2,{}),{}),{}),{}),{}),environment)
     execute(Print(Add(Value(69,{}),Value(42000,{}),{}),{}),environment)
+    execute(Print(GetTupleData(NamedTuple({"first":Value(2,{}),"second":Value(3,{})},{}),Value("second"),{}),{}),environment)
     #print(execute(UnwrapTable(FSLoader(Value("./Loaders/table.ftab",{})),Value("table1",{}),{}),environment).value)
     while True:
         selected_text = input(">> ")
