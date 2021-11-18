@@ -23,7 +23,8 @@ class Value:
     def update_all_variables(self,kwargs):
         for k in kwargs:
             self.environ[k] = kwargs[k]
-
+    def apply_all_dts(self,f):
+        return f(self)
 
 
 class Operator:
@@ -51,6 +52,10 @@ class Operator:
             self.environ[k] = kwargs[k]
         self.arg1.update_all_variables(kwargs)
         self.arg2.update_all_variables(kwargs)
+    def apply_all_dts(self,f):
+        self.arg1 = self.arg1.apply_all_dts(f)
+        self.arg2 = self.arg2.apply_all_dts(f)
+        return self
 
 class Variable:
     def __init__(self, name: str, environment: dict):
@@ -78,6 +83,8 @@ class Variable:
     def update_all_variables(self,diction):
         for k in diction:
             self.environment[k] = diction[k]
+    def apply_all_dts(self,f):
+        return f(self)
     
 class Apply:
     def __init__(self, name: str, assigned, program, environment: dict):
@@ -105,6 +112,11 @@ class Apply:
             self.environment[k] = kwargs[k]
         self.assigned.update_all_variables(kwargs)
         self.program.update_all_variables(kwargs)
+    
+    def apply_all_dts(self,f):
+        self.assigned = self.assigned.apply_all_dts(f)
+        self.program = self.program.apply_all_dts(f)
+        return self
 
 class If_Else:
     
@@ -127,8 +139,11 @@ class If_Else:
         self.conditional.update_all_variables(kwargs)
         self.yes.update_all_variables(kwargs)
         self.no.update_all_variables(kwargs)
-        
-        
+    def apply_all_dts(self,f):
+        self.conditional = self.conditional.apply_all_dts(f)
+        self.yes = self.yes.apply_all_dts(f)
+        self.no = self.no.apply_all_dts(f)
+        return self
     def pr(self):
         return f"if {self.conditional.pr()} then {self.yes.pr()} else {self.no.pr()}"
 class QuitException(Exception):
@@ -136,6 +151,40 @@ class QuitException(Exception):
 
 from zipfile import ZipFile
 from io import TextIOWrapper as io_wrap
+
+class Chain:
+    def __init__(self, name: str, assigned, program, environment: dict):
+        self.name, self.program = name, program
+        self.environment = environment
+        self.name = name
+        self.assigned = assigned
+        #print(self.assigned.pr())
+    
+    def step(self, local_environment: dict):
+        #rint("step in apply")
+        temp_env = local_environment
+        for k in self.environment:
+            temp_env[k] = self.environment[k]
+        name = self.name
+        ass = self.assigned
+        def tester(v):
+            if(isinstance(v,Variable)):
+                if(v.name == name):
+                    return ass
+            return v
+        return self.program.apply_all_dts(tester)
+    
+    def pr(self):
+        return f"Apply {self.name}={self.assigned.pr()} on {self.program.pr()}"
+    def update_all_variables(self,kwargs):
+        for k in kwargs:
+            self.environment[k] = kwargs[k]
+        self.assigned.update_all_variables(kwargs)
+        self.program.update_all_variables(kwargs)
+    def apply_all_dts(self,f):
+        self.program =  self.program.apply_all_dts(f)
+        self.assigned = self.assigned.apply_all_dts(f)
+        return self
 
 class FSLoader:
     
@@ -166,6 +215,9 @@ class FSLoader:
             self.environ[k] = kwargs[k]
         self.file_name.update_all_variables(kwargs)
         self.descriptor.update_all_variables(kwargs)
+    def apply_all_dts(self,f):
+        self.file_name = self.file_name.apply_all_dts(f)
+        return self
         
 class Loaded_Table:
     def __init__(self,file, manifest, tables, environment={}):
@@ -180,7 +232,8 @@ class Loaded_Table:
     def update_all_variables(self,kwargs):
         for k in kwargs:
             self.environment[k] = kwargs[k]
-
+    def apply_all_dts(self,f):
+        return self
 
 class UnwrapTable:
     
@@ -204,7 +257,11 @@ class UnwrapTable:
             self.environment[k] = kwargs[k]
         self.file_loader.update_all_variables(kwargs)
         self.table_name.update_all_variables(kwargs)
-
+    
+    def apply_all_dts(self,f):
+        self.file_loader = self.file_loader.apply_all_dts(f)
+        self.table_name  = self.table_name.apply_all_dts(f)
+        return self
 
 class Print:
     def __init__(self,expression,environment={}):
@@ -222,7 +279,10 @@ class Print:
         for k in kwargs:
             self.environment[k] = kwargs[k]
         self.expression.update_all_variables(kwargs)
-
+    
+    def apply_all_dts(self,f):
+        self.expression = self.expression.apply_all_dts(f)
+        return self
     
     
 
@@ -288,6 +348,7 @@ def main() -> None:
         )}
     
     execute(Print(Apply("A",Value(69,{}),Variable("collatz",{}),{}),{}),environment)
+    execute(Print(Apply("B",Value(20,{}),Chain("C",Operator(lambda a,b: a*b,Variable("B",{}),Variable("B",{}),{}),Operator(lambda a,b: a+b,Variable("C",{}),Value(2,{}),{}),{}),{}),{}),environment)
     print(execute(UnwrapTable(FSLoader(Value("./Loaders/table.ftab",{})),Value("table1",{}),{}),environment).value)
     while True:
         selected_text = input(">> ")
