@@ -32,7 +32,7 @@ class Value:
             environ -> dict: 
         
         """
-        self.value, self.environ = value, environ
+        self.value, self.environment = value, environ
     
     def step(self,local_environment: dict):
         """ Iteratively small-step execution
@@ -48,7 +48,7 @@ class Value:
         return f"{self.value}"
     def update_all_variables(self,kwargs):
         for k in kwargs:
-            self.environ[k] = kwargs[k]
+            self.environment[k] = kwargs[k]
     def apply_all_dts(self,f):
         return f(self)
 
@@ -58,24 +58,24 @@ class Operator:
     def __init__(self, oper, arg1, arg2, environ={}):
         self.oper = oper
         self.arg1, self.arg2 = arg1, arg2
-        self.environ = environ
+        self.environment = environ
     
     def step(self, local_environment: dict):
         #print("step in operator")
         temp_local = local_environment
-        for k in self.environ:
-            e = self.environ[k]
+        for k in self.environment:
+            e = self.environment[k]
             temp_local[k] = e
         if(not isinstance(self.arg1, Value)):
-            return Operator(self.oper, self.arg1.step(temp_local), self.arg2, self.environ)
+            return Operator(self.oper, self.arg1.step(temp_local), self.arg2, self.environment)
         if(not isinstance(self.arg2, Value)):
-            return Operator(self.oper, self.arg1, self.arg2.step(temp_local), self.environ)
-        return Value(self.oper(self.arg1.value,self.arg2.value),self.environ)
+            return Operator(self.oper, self.arg1, self.arg2.step(temp_local), self.environment)
+        return Value(self.oper(self.arg1.value,self.arg2.value),self.environment)
     def pr(self):
         return f"{self.arg1.pr()} operator {self.arg2.pr()}"
     def update_all_variables(self,kwargs):
         for k in kwargs:
-            self.environ[k] = kwargs[k]
+            self.environment[k] = kwargs[k]
         self.arg1.update_all_variables(kwargs)
         self.arg2.update_all_variables(kwargs)
     def apply_all_dts(self,f):
@@ -236,7 +236,7 @@ class FSLoader:
         return Loaded_Table(self.file, self.manifest, self.tables,self.environment)
     def update_all_variables(self, kwargs):
         for k in kwargs:
-            self.environ[k] = kwargs[k]
+            self.environment[k] = kwargs[k]
         self.file_name.update_all_variables(kwargs)
         self.descriptor.update_all_variables(kwargs)
     def apply_all_dts(self,f):
@@ -287,6 +287,176 @@ class UnwrapTable:
         self.table_name  = self.table_name.apply_all_dts(f)
         return self
 
+class Iterator:
+    
+    def __init__(self, iterator, environment={}):
+        self.iterator = iterator
+        self.environment = environment
+    def step(self, local_environment={}):
+        return self
+    def update_all_variables(self,kwargs):
+         for k in kwargs:
+            self.environment[k] = kwargs[k]
+    def apply_all_dts(self,f):
+        return self
+
+class FullResolvedIterator(Iterator):
+    
+    def __init__(self,iterator, environment={}):
+        super().__init__(iterator, environment)
+    
+class List(FullResolvedIterator):
+    def __init__(self, lst, environment={}):
+        super().__init__(lst, environment)
+
+
+from itertools import chain
+
+class ConcatenateIterator(Iterator):
+    
+    def __init__(self, iter1, iter2, environment={}):
+        super().__init__((iter1,iter2), environment)
+    
+    def step(self, local_environment={}):
+        temp_env = local_environment
+        for var in self.environment:
+            temp_env[var] = self.environment[var]
+        if(not isinstance(self.iterator[0], FullResolvedIterator)):
+            return ConcatenateIterator(self.iterator[0].step(local_env), self.iterator[1], self.environment)
+        if(not isinstance(self.iterator[1], FullResolvedIterator)):
+            return ConcatenateIterator(self.iterator[0],self.iterator[1].step(local_env),self.environment)
+        return FullResolvedIterator(chain(self.iterator[0].iterator, self.iterator[1].iterator),self.environment)
+    def update_all_variables(self,kwargs):
+        for k in kwargs:
+            self.environment[k] = kwargs[k]
+        for iterators in self.iterator:
+            iterators.update_all_variables(kwargs)
+
+    def apply_all_dts(self,f):
+        for iterators in self.iterator:
+            iterators = iterators.apply_all_dts(f)
+        return self
+        
+class Map(Iterator):
+
+    def __init__(self, iter1, lambd, val, environment={}):
+        super().__init__(iter1, environment)
+        self.lambd = lambd
+        self.val = val
+    
+    def step(self, local_environment={}):
+        temp_env = local_environment
+        for var in self.environment:
+            temp_env[var] = self.environment[var]
+        if(not isinstance(self.iterator, Map) and not isinstance(self.iterator, FullResolvedIterator)):
+            return Map(self.iterator.step(temp_env), self.lambd, self.val, self.environment)
+        if(not isinstance(self.val, Value)):
+            return Map(self.iterator, self.lambd, self.val.step(temp_env), self.environment)
+        if(isinstance(self.iterator, Map)):
+            return Map(self.iterator.iterator, Chain(self.iterator.val.value,self.iterator.lambd,self.lambd,self.iterator.lambd.environment),self.val,self.environment)
+        return FullResolvedIterator(map(lambda a: execute(Apply(self.val.value, a, self.lambd, self.lambd.environment), temp_env), self.iterator.iterator),self.environment)
+    
+    def update_all_variables(self, kwargs):
+        for k in kwargs:
+            self.environment[k] = kwargs[k]
+        self.iterator.update_all_variables(kwargs)
+        self.lambd.update_all_variables(kwargs)
+        self.val.update_all_variables(kwargs)
+        
+    
+    def apply_all_dts(self, f):
+        self.lambd = self.lambd.apply_all_dts(f)
+        self.iterator.apply_all_dts(f)
+        self.val.apply_all_dts(f)
+        return self
+
+class Filter(Iterator):
+    
+    def __init__(self, iter1, lambd, val, environment={}):
+        super().__init__(iter1, environment)
+        self.lambd = lambd
+        self.val = val
+    
+    def step(self, local_environment={}):
+        temp_env = local_environment
+        for k in self.environment:
+            temp_env[k] = self.environment[k] 
+        if(not isinstance(self.iterator, Filter) and not isinstance(self.iterator, Map) and not isinstance(self.iterator, FullResolvedIterator)):
+            return Filter(self.iterator.step(temp_env), self.lambd, self.val, self.environment)
+        if(not isinstance(self.val, Value)):
+            return Filter(self.iterator, self.lambd, self.val.step(temp_env), self.environment)
+        if(isinstance(self.iterator, Map)):
+            return Map(Filter(self.iterator.iterator, Chain(self.val.value, self.iterator.lambd, self.lambd,self.iterator.lambd.environment), self.iterator.val,self.iterator.environment),self.iterator.lambd, self.iterator.val, self.iterator.environment)
+        if(isinstance(self.iterator, Filter)):
+            return Filter(self.iterator.iterator, Apply(self.iterator.val.value, Variable(self.value.val,temp_env), And(self.lambd,self.iterator.lambd,temp_env),temp_env), self.value, self.environment)
+        return FullResolvedIterator(filter(lambda a: execute(Apply(self.val.value,a,self.lambd,temp_env),temp_env).value, self.iterator.iterator),self.environment)
+
+    def update_all_variables(self, kwargs):
+        for k in kwargs:
+            self.environment[k] = kwargs[k]
+        self.iterator.update_all_variables(kwargs)
+        self.lambd.update_all_variables(kwargs)
+        self.val.update_all_variables(kwargs)
+        
+    
+    def apply_all_dts(self, f):
+        self.lambd = self.lambd.apply_all_dts(f)
+        self.iterator.apply_all_dts(f)
+        self.val.apply_all_dts(f)
+        return self
+            
+
+class ToList:
+    
+    def __init__(self,iterator, environment={}):
+        self.iterator = iterator
+        self.environment=environment
+    def step(self, local_environment={}):
+        temp_env = local_environment
+        for var in self.environment:
+            temp_env[var] = self.environment[var]
+        if(not isinstance(self.iterator, FullResolvedIterator)):
+            return ToList(self.iterator.step(temp_env),self.environment)
+        if(isinstance(self.iterator, List)):
+            return self.iterator
+        return List(list(self.iterator.iterator),self.environment)
+    def update_all_variables(self,kwargs):
+        for k in kwargs:
+            self.environment[k] = kwargs[k]
+        self.iterator.update_all_variables(kwargs)
+    def apply_all_dts(self,f):
+        self.iterator = self.iterator.apply_all_dts(f)
+        return self
+class Access:
+    
+    def __init__(self,array, location, environment={}):
+        self.array = array
+        self.location = location
+        self.environment = enivronment
+    def step(self,local_environment={}):
+        temp_env = local_environment
+        for var in self.environment:
+            temp_env[var] = self.environment[var]
+        if(not isinstance(self.array, List) and not isinstance(self.array,Iterator)):
+            return Access(self.array.step(temp_env),self.location, self.environment)
+        if(isinstance(self.array,Iterator)):
+            return Access(ToList(self.array, self.environment), self.location,self.environment)
+        if(not isinstance(self.location, Value)):
+            return Access(self.array, self.location.step(temp_env),self.environment)
+        return Value(self.array.iterator[self.location.value],self.array.environment)
+    
+            
+    def update_all_variables(self,kwargs):
+        for k in kwargs:
+            self.environment[k] = kwargs[k]
+        self.array.update_all_variables(kwargs)
+        self.location.update_all_variables(kwargs)
+    def apply_all_dts(self,f):
+        self.array = self.array.apply_all_dts(f)
+        self.location = self.location.apply_all_dts(f)
+        return self
+
+
 class Print:
     def __init__(self,expression,environment={}):
         self.expression = expression
@@ -295,8 +465,17 @@ class Print:
         temp_env = local_environment
         for var in self.environment:
             temp_env[var] = self.environment[var]
-        if(not isinstance(self.expression, Value)):
+        if(not isinstance(self.expression, Value) and not isinstance(self.expression, List)):
             return Print(self.expression.step(temp_env),self.environment)
+        if(isinstance(self.expression,List)):
+            print(f'[{", ".join(map(lambda a: str(execute(a,temp_env).value) ,self.expression.iterator))}]')
+            return Value(None,self.environment)
+        if(isinstance(self.expression,NamedTuple)):
+            for key in self.expression.value:
+                while(not isinstance(self.expression.value[key],Value)):
+                    self.expression.value[key] = self.expression.value[key].step(temp_env)
+            print({key:self.expression.value[key].value for key in self.expression.value})
+            return Value(None,self.environment)
         print(self.expression.value)
         return Value(None,self.environment)
     def update_all_variables(self,kwargs):
@@ -375,14 +554,14 @@ class NamedTuple(Value):
     
     def step(self,local_environment={}):
         temp_env = local_environment
-        for var in self.environ:
+        for var in self.environment:
             temp_env[var] = self.environment[var]
         for vals in self.value:
             if(not isinstance(self.value[vals],Value)):
                 data_cpy = self.value
                 data_cpy[vals] = data_cpy[vals].step(temp_env)
-                return NamedTuple(data_cpy,self.environ)
-        return EvaluatedTuple(self.value,self.environ)
+                return NamedTuple(data_cpy,self.environment)
+        return EvaluatedTuple(self.value,self.environment)
     
     def update_all_variables(self,kwargs):
         for k in kwargs:
@@ -392,7 +571,7 @@ class NamedTuple(Value):
     def apply_all_dts(self,f):
         for keys in self.value:
             self.value[keys] = self.value[keys].apply_all_dts(f)
-        
+        return self
 
 class EvaluatedTuple(NamedTuple):
     
@@ -420,7 +599,30 @@ class GetTupleData:
             raise Exception(f"Member Name {self.attribute_name.value} not in tuple!")
         return self.tup.value[self.attribute_name.value]
 
-    
+class UpdateTuple:
+    def __init__(self,tup,attribute_name,value,eager=True,environment={}):
+        self.tup = tup
+        self.attribute_name = attribute_name
+        self.value = value
+        self.eager = eager
+        self.environment = environment
+    def step(self,local_environment={}):
+        temp_env = local_environment
+        for var in self.environment:
+            temp_env[var] = self.environment[var]
+        if(not isinstance(self.tup,NamedTuple)):
+            return UpdateTuple(self.tup.step(temp_env),self.attribute_name,self.value,self.eager,self.environment)
+        if(not isinstance(self.attribute_name,Value)):
+            return UpdateTuple(self.tup,self.attribute_name.step(temp_env),self.value,self.eager,self.environment)
+        if(self.eager and not isinstance(self.value,Value)):
+            return UpdateTuple(self.tup,self.attribute_name,self.value.step(temp_env),self.eager,self.environment)
+        if(self.attribute_name.value not in self.tup.value):
+            raise Exception(f"Member Name {self.attribute_name.value} not in tuple!")
+        copy_of_tuple_data = self.tup.value
+        copy_of_tuple_data[self.attribute_name.value] = self.value
+        return NamedTuple(copy_of_tuple_data,self.tup.environment)
+
+
 
 def execute(program, environment: dict) -> Value:
     while(not isinstance(program, Value)):
@@ -433,6 +635,27 @@ def execute(program, environment: dict) -> Value:
 
 
 
+
+class Type:
+    def __init__(self,expression,environment={}):
+        self.expression = expression
+        self.environment = environment
+    def step(self,local_environment={}):
+        temp_env = local_environment
+        for var in self.environment:
+            temp_env[var] = self.environment[var]
+        if(not isinstance(self.expression, Value)):
+            return Type(self.expression.step(temp_env),self.environment)
+        if(isinstance(self.expression,NamedTuple)):
+            return Value("NamedTuple",self.environment)
+        return Value(type(self.expression.value),self.environment)
+    def update_all_variables(self,kwargs):
+        for k in kwargs:
+            self.environment[k] = kwargs[k]
+        self.expression.update_all_variables(kwargs)
+    def apply_all_dts(self,f):
+        self.expression = self.expression.apply_all_dts(f)
+        return self
 def main() -> None:
     print(f"fang[ver:{VERSION}][{YEAR}] -- Copyright Joseph Scannell - Python 3.10")
     environment = {"collatz":
@@ -489,7 +712,11 @@ def main() -> None:
     execute(Print(Apply("B",Value(20,{}),Chain("C",Operator(lambda a,b: a*b,Variable("B",{}),Variable("B",{}),{}),Operator(lambda a,b: a+b,Variable("C",{}),Value(2,{}),{}),{}),{}),{}),environment)
     execute(Print(Add(Value(69,{}),Value(42000,{}),{}),{}),environment)
     execute(Print(GetTupleData(NamedTuple({"first":Value(2,{}),"second":Value(3,{})},{}),Value("second"),{}),{}),environment)
+    execute(Print(UpdateTuple(UpdateTuple(NamedTuple({"first":Value(2,{}),"second":Value(1,{})},{}),Value("second"),GetTupleData(NamedTuple({"first":Value(2,{}),"second":Value(3,{})},{}),Value("first"),{}),True,{}),Value("first"),GetTupleData(NamedTuple({"first":Value(2,{}),"second":Value(3,{})},{}),Value("second"),{}),True,{}),{}),environment)
+    execute(Print(List([Value("first"),Value("second"),Value("third")]),{}),environment)
     #print(execute(UnwrapTable(FSLoader(Value("./Loaders/table.ftab",{})),Value("table1",{}),{}),environment).value)
+    execute(Print(Type(Value(None,{}),{}),{}),environment)
+    execute(Print(ToList(Map(List([Value(3),Value(9),Value(2)]),Mult(Variable("var",{}),Value(2,{}),{}),Value("var",{}),{}),{}),{}),environment)
     while True:
         selected_text = input(">> ")
         
